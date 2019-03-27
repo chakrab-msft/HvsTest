@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+#include <netinet/in.h>
+#include <netdb.h>
 
 using namespace std::chrono_literals;
 
@@ -29,18 +31,6 @@ typedef struct _GUID {
     uint8_t  Data4[8];
 } GUID;
 
-typedef struct _SOCKADDR_VM
-{
-    unsigned short Family;
-    unsigned short Reserved;
-    unsigned int SvmPort;
-    unsigned int SvmCID;
-
-    unsigned char svm_zero[sizeof(struct sockaddr) -
-        sizeof(sa_family_t) - sizeof(unsigned short) -
-        sizeof(unsigned int) - sizeof(unsigned int)];
-} SOCKADDR_VM;
-
 #define DEFINE_GUID1(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
          const GUID name \
                 = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
@@ -49,7 +39,6 @@ typedef struct _SOCKADDR_VM
 #define SERVICE_PORT 0x3049197c
 
 #define INVALID_SOCKET -1
-#define VMADDR_CID_HOST 2
 
 typedef int SOCKET;
 #define SOCKET_ERROR -1
@@ -65,7 +54,7 @@ public:
 
     bool Start()
     {
-        ConnectSocket = socket(AF_VSOCK, SOCK_STREAM, 0);
+        ConnectSocket = socket(AF_INET, SOCK_STREAM, 0);
 
         if (ConnectSocket == INVALID_SOCKET)
         {
@@ -74,13 +63,21 @@ public:
         }
 
         // Connect to server
-        SOCKADDR_VM savm;
-        memset(&savm, 0, sizeof(savm));
-        savm.Family = AF_VSOCK;
-        savm.SvmCID = VMADDR_CID_HOST;
-        savm.SvmPort = SERVICE_PORT;
+	hostent *server = gethostbyname("192.168.0.1");
+	if (!server)
+	{
+	    fprintf(stderr, "No such host\n");
+	    return false;
+	}
 
-        int iResult = connect(ConnectSocket, (const struct sockaddr *)&savm, sizeof(savm));
+        sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+	addr.sin_port = htons(12999);
+	memcpy(&addr.sin_addr.s_addr, server->h_addr, server->h_length);
+
+	std::cout << "Connecting..." << std::endl;
+        int iResult = connect(ConnectSocket, (const struct sockaddr *)&addr, sizeof(addr));
 
         if (iResult == SOCKET_ERROR)
         {
@@ -88,6 +85,7 @@ public:
             return false;
         }
 
+	std::cout << "Connected!" << std::endl;
         return true;
     };
 
