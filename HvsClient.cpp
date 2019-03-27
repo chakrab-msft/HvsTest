@@ -11,14 +11,16 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <vector>
 
 using namespace std::chrono_literals;
 
-std::atomic<int> msgCount = 0;
+std::atomic<int> msgCount {};
 
-#define DEFAULT_BUFFER_LENGTH 1000
-#define SEND_BUFFER_LENGTH 4 * 1024 * 1024
-#define AF_VSOCK 40
+#define SEND_BUFFER_LENGTH 1024
 
 typedef struct _GUID {
     uint32_t Data1;
@@ -26,14 +28,6 @@ typedef struct _GUID {
     uint16_t Data3;
     uint8_t  Data4[8];
 } GUID;
-
-typedef struct _SOCKADDR_HV
-{
-    unsigned short Family;
-    unsigned short Reserved;
-    GUID VmId;
-    GUID ServiceId;
-} SOCKADDR_HV;
 
 typedef struct _SOCKADDR_VM
 {
@@ -48,20 +42,19 @@ typedef struct _SOCKADDR_VM
 } SOCKADDR_VM;
 
 #define DEFINE_GUID1(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
-        EXTERN_C const GUID DECLSPEC_SELECTANY name \
+         const GUID name \
                 = { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }
 
-DEFINE_GUID1(HV_GUID_PARENT,
-    0xa42e7cda, 0xd03f, 0x480c, 0x9c, 0xc2, 0xa4, 0xde, 0x20, 0xab, 0xb8, 0x78);
-
-/* 3049197C-FACB-11E6-BD58-64006A7986D3 */
-DEFINE_GUID1(SERVICE_GUID,
-    0x3049197c, 0xfacb, 0x11e6, 0xbd, 0x58, 0x64, 0x00, 0x6a, 0x79, 0x86, 0xd3);
 
 #define SERVICE_PORT 0x3049197c
 
-#define INVALID_SOCKET 0
+#define INVALID_SOCKET -1
 #define VMADDR_CID_HOST 2
+
+typedef int SOCKET;
+#define SOCKET_ERROR -1
+#define closesocket(_fd) close(_fd)
+#define SD_SEND SHUT_WR
 
 class Client {
 public:
@@ -72,9 +65,6 @@ public:
 
     bool Start()
     {
-        SOCKADDR_HV clientService;
-        GUID VmID, ServiceID;
-
         ConnectSocket = socket(AF_VSOCK, SOCK_STREAM, 0);
 
         if (ConnectSocket == INVALID_SOCKET)
@@ -128,18 +118,6 @@ public:
         return true;
     };
 
-    // Receive message from server
-    bool Recv(char* recvbuf, int len)
-    {
-        int iResult = recv(ConnectSocket, recvbuf, len, 0);
-        if (iResult > 0)
-        {
-            return true;
-        }
-
-
-        return false;
-    }
 
 private:
     SOCKET ConnectSocket;
@@ -171,7 +149,12 @@ int main(int argc, char* argv[])
 
     for (int i = 0; i < 99999999; ++i)
     {
-        client.Send(sendbuf, SEND_BUFFER_LENGTH);
+	std::vector<char> sendbuf(SEND_BUFFER_LENGTH);
+        if(!client.Send(sendbuf.data(), SEND_BUFFER_LENGTH))
+	{
+            std::cout << "Send failed at loop " << i << std::endl;
+            break;
+	}
     }
 
     client.Stop();
